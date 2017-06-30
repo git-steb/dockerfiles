@@ -1,0 +1,26 @@
+sudo: required
+
+language: c
+
+services:
+- docker
+
+env:
+- OVERSION="3.8"
+- OVERSION="4.0"
+- OVERSION="4.2"
+
+before_install:
+- docker build -f dockerfiles/octave${OVERSION}/Dockerfile . -t trusty/r-octave${OVERSION}
+- docker run -it -d --name builder trusty/r-octave${OVERSION} /bin/sh
+- docker exec -it builder /bin/sh -c "echo cd /root/repo >> /root/build_env"
+- docker exec -it builder /bin/sh -c ". /root/build_env; echo PKG_TARBALL=\$(Rscript -e 'pkg <- devtools::as.package(\".\"); cat(paste0(pkg\$package,\"_\",pkg\$version,\".tar.gz\"))') >> /root/build_env"
+
+script:
+- export PKG_TARBALL=$(docker exec -it builder /bin/sh -c ". /root/build_env; echo -n \$PKG_TARBALL")
+- echo $PKG_TARBALL
+- docker exec -it builder /bin/sh -c ". /root/build_env; R CMD build ."
+- docker exec -it builder /bin/sh -c ". /root/build_env; R CMD check \"$PKG_TARBALL\" --as-cran --no-manual; (echo CHECK_RET=\$? >> /root/build_env)"
+- docker exec -it builder /bin/sh -c "cat /root/build_env"
+- CHECK_RET=$(docker exec builder /bin/sh -c ". /root/build_env; echo -n \$CHECK_RET")
+- docker cp builder:/root/repo/${PKG_TARBALL} .
